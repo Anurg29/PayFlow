@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PayFlow | Stunning Real-Time Payments</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <!-- Animated Background Blobs -->
+    <div class="blob blob-1"></div>
+    <div class="blob blob-2"></div>
+    <div class="blob blob-3"></div>
+
+    <!-- Login / Register View -->
+    <main id="auth-view" class="view active">
+        <div class="auth-container glass">
+            <div class="auth-header">
+                <div class="logo">
+                    <i class="ri-pulse-line"></i> PayFlow
+                </div>
+                <p>Welcome to the future of payments.</p>
+            </div>
+
+            <div class="auth-tabs">
+                <button class="tab active" onclick="switchAuthTab('login')">Login</button>
+                <button class="tab" onclick="switchAuthTab('register')">Register</button>
+            </div>
+
+            <!-- Login Form -->
+            <form id="login-form" class="auth-form active">
+                <div class="input-group">
+                    <i class="ri-mail-line"></i>
+                    <input type="email" id="login-email" placeholder="Email Address" required>
+                </div>
+                <div class="input-group">
+                    <i class="ri-lock-line"></i>
+                    <input type="password" id="login-password" placeholder="Password" required>
+                </div>
+                <button type="submit" class="btn btn-primary" id="login-btn">
+                    <span>Sign In</span>
+                    <i class="ri-arrow-right-line"></i>
+                </button>
+            </form>
+
+            <!-- Register Form -->
+            <form id="register-form" class="auth-form">
+                <div class="input-group">
+                    <i class="ri-user-line"></i>
+                    <input type="text" id="reg-name" placeholder="Full Name" required>
+                </div>
+                <div class="input-group">
+                    <i class="ri-mail-line"></i>
+                    <input type="email" id="reg-email" placeholder="Email Address" required>
+                </div>
+                <div class="input-group">
+                    <i class="ri-lock-line"></i>
+                    <input type="password" id="reg-password" placeholder="Password" required>
+                </div>
+                <div class="input-group select-group">
+                    <i class="ri-shield-user-line"></i>
+                    <select id="reg-role">
+                        <option value="user">Standard User</option>
+                        <option value="admin">Administrator</option>
+                    </select>
+                </div>
+                <button type="submit" class="btn btn-primary" id="reg-btn">
+                    <span>Create Account</span>
+                    <i class="ri-arrow-right-line"></i>
+                </button>
+            </form>
+        </div>
+    </main>
+
+    <!-- App Dashboard View -->
+    <main id="app-view" class="view">
+        <nav class="sidebar glass">
+            <div class="logo">
+                <i class="ri-pulse-line"></i> PayFlow
+            </div>
+            
+            <div class="nav-links">
+                <a href="#" class="nav-item active" onclick="switchAppTab('dashboard')">
+                    <i class="ri-dashboard-line"></i>
+                    <span>Dashboard</span>
+                </a>
+                <a href="#" class="nav-item admin-only" onclick="switchAppTab('admin-stats')" style="display: none;">
+                    <i class="ri-bar-chart-box-line"></i>
+                    <span>System Stats</span>
+                </a>
+                <a href="#" class="nav-item admin-only" onclick="switchAppTab('admin-flagged')" style="display: none;">
+                    <i class="ri-shield-cross-line"></i>
+                    <span>Flagged TXNs</span>
+                </a>
+            </div>
+
+            <div class="user-profile">
+                <div class="avatar"><i class="ri-user-smile-line"></i></div>
+                <div class="info">
+                    <div class="name" id="profile-name">User</div>
+                    <div class="role" id="profile-role">User</div>
+                </div>
+                <button class="logout-btn" onclick="logout()" title="Logout">
+                    <i class="ri-logout-box-r-line"></i>
+                </button>
+            </div>
+        </nav>
+
+        <div class="content">
+            <!-- Header -->
+            <header class="top-nav glass">
+                <h1 id="page-title">Dashboard</h1>
+                <div class="actions">
+                    <button class="btn btn-outline" onclick="fetchTransactions()">
+                        <i class="ri-refresh-line"></i> Refresh
+                    </button>
+                </div>
+            </header>
+
+            <!-- Dashboard Content -->
+            <div id="tab-dashboard" class="app-tab active scrollable">
+                <div class="grid layout-grid">
+                    
+                    <!-- Left Column -->
+                    <div class="col-left">
+                        <!-- Stats Card -->
+                        <div class="glass card stats-card">
+                            <h3>Total Processed</h3>
+                            <h2 class="gradient-text metric" id="total-amount">₹0.00</h2>
+                            <p class="subtitle" id="total-count">0 transactions</p>
+                        </div>
+
+                        <!-- Payment Form -->
+                        <div class="glass card">
+                            <h3><i class="ri-send-plane-line"></i> Send Payment</h3>
+                            <form id="payment-form" class="mt-4">
+                                <div class="input-group">
+                                    <span class="currency-symbol">₹</span>
+                                    <input type="number" id="pay-amount" placeholder="Amount" min="1" required class="pl-10">
+                                </div>
+                                <div class="methods mt-3">
+                                    <label class="method-radio">
+                                        <input type="radio" name="method" value="upi" checked>
+                                        <div class="method-box">
+                                            <i class="ri-qr-code-line"></i> UPI
+                                        </div>
+                                    </label>
+                                    <label class="method-radio">
+                                        <input type="radio" name="method" value="card">
+                                        <div class="method-box">
+                                            <i class="ri-bank-card-line"></i> Card
+                                        </div>
+                                    </label>
+                                    <label class="method-radio">
+                                        <input type="radio" name="method" value="netbanking">
+                                        <div class="method-box">
+                                            <i class="ri-bank-line"></i> NetBanking
+                                        </div>
+                                    </label>
+                                </div>
+                                <button type="submit" class="btn btn-primary mt-4 w-full" id="pay-btn">
+                                    <span>Process Payment</span>
+                                    <i class="ri-secure-payment-line"></i>
+                                </button>
+                                <p class="hint mt-2"><i class="ri-information-line"></i> Amount > ₹50k will be flagged.</p>
+                            </form>
+                        </div>
+                    </div>
+
+                    <!-- Right Column: Transactions -->
+                    <div class="col-right">
+                        <div class="glass card h-full flex-col">
+                            <h3><i class="ri-history-line"></i> Recent Transactions</h3>
+                            <div class="txn-list mt-3 flex-1" id="transactions-list">
+                                <!-- Dynamically injected txns -->
+                                <div class="empty-state">No transactions yet.</div>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+            <!-- Admin Stats Tab -->
+            <div id="tab-admin-stats" class="app-tab scrollable">
+                <div class="grid admin-grid">
+                    <div class="glass card text-center">
+                        <i class="ri-line-chart-line text-blue text-3xl"></i>
+                        <h4 class="mt-2 text-gray">Total Volume</h4>
+                        <h2 class="gradient-text mt-1" id="admin-total-vol">₹0</h2>
+                    </div>
+                    <div class="glass card text-center">
+                        <i class="ri-checkbox-circle-line text-green text-3xl"></i>
+                        <h4 class="mt-2 text-gray">Success Rate</h4>
+                        <h2 class="text-white mt-1" id="admin-success-rate">0%</h2>
+                    </div>
+                    <div class="glass card text-center">
+                        <i class="ri-error-warning-line text-yellow text-3xl"></i>
+                        <h4 class="mt-2 text-gray">Flagged Anomalies</h4>
+                        <h2 class="text-white mt-1" id="admin-flagged-count">0</h2>
+                    </div>
+                    <div class="glass card text-center">
+                        <i class="ri-close-circle-line text-red text-3xl"></i>
+                        <h4 class="mt-2 text-gray">Failed</h4>
+                        <h2 class="text-white mt-1" id="admin-failed-count">0</h2>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Admin Flagged Tab -->
+            <div id="tab-admin-flagged" class="app-tab scrollable">
+                <div class="glass card">
+                    <h3><i class="ri-shield-cross-line text-yellow"></i> Flagged Transactions</h3>
+                    <p class="text-gray mt-1">Transactions caught by anomaly detection limits.</p>
+                    <div class="txn-list mt-4" id="flagged-list">
+                        <!-- Flagged dynamically injected -->
+                        <div class="empty-state">System clean. No flagged transactions.</div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <!-- Toast Notifications -->
+    <div id="toast-container"></div>
+
+</body>
+</html>

@@ -1,0 +1,26 @@
+# Environment — NEVER commit this
+.env
+
+# Virtual environment
+venv/
+env/
+.venv/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# SQLite local database
+*.db
+*.sqlite3
+
+# IDE / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Logs
+*.log
