@@ -1,26 +1,52 @@
-# Environment — NEVER commit this
+# ─── Python Backend ───────────────────────────────────────────────────────────
+
+# Environment secrets — NEVER commit
 .env
+.env.local
+.env.production
 
 # Virtual environment
 venv/
 env/
 .venv/
 
-# Python cache
+# Python cache & compiled files
 __pycache__/
 *.py[cod]
 *.pyo
 *.pyd
+*.so
 
-# SQLite local database
+# SQLite local database (use Render PostgreSQL in production)
 *.db
 *.sqlite3
 
-# IDE / OS
+# ─── Node / React Frontend ────────────────────────────────────────────────────
+
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+frontend/.env.local
+frontend/.env.production
+
+# ─── IDE / OS ─────────────────────────────────────────────────────────────────
+
 .DS_Store
 .idea/
 .vscode/
 *.swp
+*.swo
+Thumbs.db
 
-# Logs
+# ─── Logs ─────────────────────────────────────────────────────────────────────
+
 *.log
+logs/
+
+# ─── Security: never commit these ─────────────────────────────────────────────
+
+*.pem
+*.key
+*.crt
+secrets.json
+credentials.json
