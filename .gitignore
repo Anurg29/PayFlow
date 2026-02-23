@@ -50,3 +50,6 @@ logs/
 *.crt
 secrets.json
 credentials.json
+
+# ─── Firebase CLI ─────────────────────────────────────────────────────────────
+.firebase/

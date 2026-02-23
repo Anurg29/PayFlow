@@ -1,35 +1,47 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
-import './App.css'
+import { Toaster } from 'react-hot-toast'
+import { AuthProvider, useAuth } from './context/AuthContext'
+import AuthPage from './pages/AuthPage'
+import Dashboard from './pages/Dashboard'
 
-function App() {
-  const [count, setCount] = useState(0)
+function AppRouter() {
+  const { user, loading } = useAuth()
 
-  return (
-    <>
-      <div>
-        <a href="https://vite.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
+  if (loading) {
+    return (
+      <div className="splash">
+        <div className="splash-logo">
+          <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+          </svg>
+          PayFlow
+        </div>
+        <div className="splash-spinner" />
       </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </button>
-        <p>
-          Edit <code>src/App.jsx</code> and save to test HMR
-        </p>
-      </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
-    </>
-  )
+    )
+  }
+
+  return user ? <Dashboard /> : <AuthPage />
 }
 
-export default App
+export default function App() {
+  return (
+    <AuthProvider>
+      <Toaster
+        position="top-right"
+        toastOptions={{
+          style: {
+            background: '#0f172a',
+            color: '#f8fafc',
+            border: '1px solid #1e293b',
+            borderRadius: '12px',
+            fontFamily: "'Outfit', sans-serif",
+            fontSize: '0.95rem',
+          },
+          success: { iconTheme: { primary: '#10b981', secondary: '#0f172a' } },
+          error: { iconTheme: { primary: '#ef4444', secondary: '#0f172a' } },
+        }}
+      />
+      <AppRouter />
+    </AuthProvider>
+  )
+}

@@ -1,6 +1,10 @@
 import axios from 'axios'
 
-const api = axios.create({ baseURL: '/' })
+// In production (Firebase Hosting), VITE_API_URL points to the Render backend.
+// In development, it's empty so Vite's proxy handles the requests.
+const api = axios.create({
+    baseURL: import.meta.env.VITE_API_URL || '/',
+})
 
 api.interceptors.request.use(config => {
     const token = localStorage.getItem('token')

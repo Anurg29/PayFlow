@@ -8,6 +8,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 from .database import engine, Base
 from .auth.router import router as auth_router
@@ -29,10 +32,20 @@ app = FastAPI(
     redoc_url="/redoc",
 )
 
-# CORS — allow all origins for local development
+# ─── CORS ─────────────────────────────────────────────────────────────────────
+# In production, only allow requests from the Firebase frontend URL.
+# Set FRONTEND_URL env var on Render to your Firebase URL e.g. https://payflow-xxx.web.app
+# In development (no FRONTEND_URL set), we allow localhost origins.
+_frontend_url = os.getenv("FRONTEND_URL", "")
+_allowed_origins = (
+    [_frontend_url, "http://localhost:5173", "http://127.0.0.1:5173"]
+    if _frontend_url
+    else ["http://localhost:5173", "http://127.0.0.1:5173"]
+)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

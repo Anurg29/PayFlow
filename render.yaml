@@ -1,0 +1,37 @@
+services:
+  # ─── FastAPI Web Service ──────────────────────────────────────────────────────
+  - type: web
+    name: payflow-api
+    runtime: python
+    region: singapore          # closest to India
+    plan: free
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "uvicorn app.main:app --host 0.0.0.0 --port $PORT"
+    healthCheckPath: /health
+
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: payflow-db
+          property: connectionString
+
+      - key: SECRET_KEY
+        generateValue: true      # Render auto-generates a secure random value
+
+      - key: ALGORITHM
+        value: HS256
+
+      - key: ACCESS_TOKEN_EXPIRE_MINUTES
+        value: 30
+
+      # 🔴 IMPORTANT: Replace this with your actual Firebase Hosting URL after deploying frontend
+      # Example: https://payflow-12345.web.app
+      - key: FRONTEND_URL
+        value: https://YOUR_FIREBASE_PROJECT_ID.web.app
+
+# ─── PostgreSQL Database ──────────────────────────────────────────────────────
+databases:
+  - name: payflow-db
+    databaseName: payflow
+    plan: free
+    region: singapore
