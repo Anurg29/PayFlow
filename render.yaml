@@ -24,8 +24,8 @@ services:
       - key: ACCESS_TOKEN_EXPIRE_MINUTES
         value: "30"
 
-      # 🔴 IMPORTANT: Replace this with your actual Firebase Hosting URL after deploying frontend
-      # Example: https://payflow-12345.web.app
+      # 🔴 Update this with your Firebase Hosting URL after deploying frontend
+      # Run: firebase deploy --only hosting  →  copy the URL shown → paste here
       - key: FRONTEND_URL
         value: https://YOUR_FIREBASE_PROJECT_ID.web.app
 
