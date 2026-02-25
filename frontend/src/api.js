@@ -16,8 +16,27 @@ api.interceptors.response.use(
     res => res,
     err => {
         if (err.response?.status === 401) {
-            localStorage.removeItem('token')
-            window.location.href = '/'
+            const token = localStorage.getItem('token')
+            // Only force-logout if there's no token or it's truly expired
+            if (!token) {
+                window.location.href = '/'
+                return Promise.reject(err)
+            }
+            // Check if the token is actually expired
+            try {
+                const payload = JSON.parse(atob(token.split('.')[1]))
+                const isExpired = payload.exp * 1000 < Date.now()
+                if (isExpired) {
+                    localStorage.removeItem('token')
+                    window.location.href = '/'
+                    return Promise.reject(err)
+                }
+            } catch {
+                localStorage.removeItem('token')
+                window.location.href = '/'
+                return Promise.reject(err)
+            }
+            // Token exists and not expired — let component handle the error (show toast)
         }
         return Promise.reject(err)
     }
