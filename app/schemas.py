@@ -224,3 +224,58 @@ class GatewayStats(BaseModel):
     total_payments: int
     total_volume_paise: int
     total_refunds: int
+
+
+# ─── Revenue Dashboard ────────────────────────────────────────────────────────
+
+class RevenueBucket(BaseModel):
+    """A single day/week/month data point."""
+    period: str                       # e.g. "2026-02-25", "2026-W08", "2026-02"
+    total_gmv_paise: int              # Gross Merchandise Value (captured)
+    total_refunds_paise: int
+    net_revenue_paise: int            # gmv - refunds
+    transaction_count: int
+    success_count: int
+    failed_count: int
+    refund_count: int
+    success_rate: float               # 0.0 – 1.0
+    refund_rate: float                # 0.0 – 1.0
+
+
+class RevenueDashboard(BaseModel):
+    """Aggregated revenue overview."""
+    period_type: str                  # "daily", "weekly", "monthly"
+    buckets: list[RevenueBucket]
+    total_gmv_paise: int
+    total_refunds_paise: int
+    total_net_paise: int
+    overall_success_rate: float
+    overall_refund_rate: float
+
+
+# ─── Tax / GST Report ─────────────────────────────────────────────────────────
+
+class GSTLineItem(BaseModel):
+    """One row in a GST report (per month)."""
+    month: str                        # "2026-02"
+    gross_revenue_paise: int          # total captured payments
+    refunds_paise: int
+    net_taxable_paise: int            # gross - refunds
+    cgst_paise: int                   # Central GST  @ 9%
+    sgst_paise: int                   # State GST    @ 9%
+    igst_paise: int                   # Integrated   @ 18%  (applied when inter-state)
+    total_gst_paise: int              # cgst + sgst  or igst
+    total_with_gst_paise: int         # net_taxable + total_gst
+    transaction_count: int
+
+
+class GSTReport(BaseModel):
+    """Full GST report spanning multiple months."""
+    financial_year: str               # "FY 2025-26"
+    gst_rate_percent: float           # 18.0
+    line_items: list[GSTLineItem]
+    total_gross_paise: int
+    total_refunds_paise: int
+    total_net_taxable_paise: int
+    total_gst_paise: int
+
