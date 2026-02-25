@@ -31,8 +31,14 @@ export function AuthProvider({ children }) {
     }
 
     const register = async (name, email, password, role) => {
-        const res = await api.post('/auth/register', { name, email, password, role })
-        return res.data
+        // Step 1: Create the account
+        await api.post('/auth/register', { name, email, password, role })
+        // Step 2: Auto-login immediately after registration
+        const loginRes = await api.post('/auth/login-json', { email, password })
+        localStorage.setItem('token', loginRes.data.access_token)
+        const payload = JSON.parse(atob(loginRes.data.access_token.split('.')[1]))
+        setUser({ email: payload.sub, token: loginRes.data.access_token })
+        return loginRes.data
     }
 
     const logout = () => {

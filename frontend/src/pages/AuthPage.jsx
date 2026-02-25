@@ -29,8 +29,8 @@ export default function AuthPage() {
         setLoading(true)
         try {
             await register(regData.name, regData.email, regData.password, regData.role)
-            toast.success('Account created! Please sign in.')
-            setTab('login')
+            toast.success('Account created! Welcome to PayFlow 🎉')
+            // No setTab('login') needed — AuthContext sets user → App.jsx routes to Dashboard
         } catch (err) {
             toast.error(err.response?.data?.detail || 'Registration failed')
         } finally { setLoading(false) }
