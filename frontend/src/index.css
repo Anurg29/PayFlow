@@ -1242,3 +1242,310 @@ button {
     grid-template-columns: 1fr 1fr;
   }
 }
+
+/* ─── SIDEBAR PROFILE BUTTON ─────────────────────────────────────────────── */
+.sidebar-profile-btn {
+  width: 100%;
+  background: none;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  text-align: left;
+  transition: var(--transition);
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem;
+}
+
+.sidebar-profile-btn:hover {
+  background: var(--glass-hover);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.sidebar-profile-btn.active {
+  background: rgba(109, 40, 217, 0.15);
+  border-color: var(--primary-light);
+}
+
+/* ─── PROFILE PAGE ───────────────────────────────────────────────────────── */
+.profile-page {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  max-width: 900px;
+  margin: 0 auto;
+  padding-bottom: 2rem;
+  animation: fadeSlideUp 0.35s ease;
+}
+
+@keyframes fadeSlideUp {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Hero card */
+.profile-hero {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  padding: 2rem 2.5rem;
+  border-radius: var(--radius-xl);
+  background: linear-gradient(135deg, rgba(109, 40, 217, 0.12) 0%, rgba(59, 130, 246, 0.06) 100%);
+  border: 1px solid rgba(109, 40, 217, 0.25);
+  position: relative;
+  overflow: hidden;
+}
+
+.profile-hero::before {
+  content: '';
+  position: absolute;
+  top: -60px;
+  right: -60px;
+  width: 200px;
+  height: 200px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(109, 40, 217, 0.15), transparent 70%);
+  pointer-events: none;
+}
+
+.profile-avatar-lg {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--primary), var(--accent));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2rem;
+  font-weight: 800;
+  flex-shrink: 0;
+  box-shadow: 0 0 30px rgba(109, 40, 217, 0.4);
+}
+
+.profile-hero-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.profile-name {
+  font-size: 1.6rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.profile-email-txt {
+  font-size: 0.9rem;
+  color: var(--text-2);
+}
+
+.profile-role-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.75rem;
+  border-radius: 99px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  width: fit-content;
+  border: 1px solid currentColor;
+}
+
+.profile-logout-hero {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 1.2rem;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: var(--radius-md);
+  background: rgba(239, 68, 68, 0.07);
+  color: #ef4444;
+  font-size: 0.88rem;
+  font-weight: 600;
+  transition: var(--transition);
+  flex-shrink: 0;
+}
+
+.profile-logout-hero:hover {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.5);
+}
+
+/* Two-column grid */
+.profile-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+}
+
+/* Cards */
+.profile-card {
+  border-radius: var(--radius-lg);
+  padding: 1.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.profile-card-header {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--glass-border);
+}
+
+.profile-card-header h2 {
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.profile-card-icon {
+  color: var(--accent);
+}
+
+/* Detail rows */
+.profile-details-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.profile-detail-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--glass-border);
+  gap: 1rem;
+}
+
+.profile-detail-row:last-child {
+  border-bottom: none;
+}
+
+.detail-label {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.82rem;
+  color: var(--text-2);
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+.detail-value {
+  font-size: 0.88rem;
+  font-weight: 600;
+  text-align: right;
+  word-break: break-all;
+}
+
+.profile-session-badge {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.78rem;
+  color: var(--text-2);
+  background: rgba(16, 185, 129, 0.06);
+  border: 1px solid rgba(16, 185, 129, 0.2);
+  border-radius: var(--radius-sm);
+  padding: 0.5rem 0.75rem;
+  margin-top: auto;
+}
+
+/* Password form */
+.profile-pw-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.pw-input-wrap {
+  position: relative;
+}
+
+.pw-input-wrap input {
+  width: 100%;
+  background: var(--bg-elevated);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-sm);
+  color: var(--text-1);
+  padding: 0.75rem 2.8rem 0.75rem 1rem;
+  font-size: 0.92rem;
+  outline: none;
+  transition: var(--transition);
+}
+
+.pw-input-wrap input:focus {
+  border-color: var(--primary-light);
+  box-shadow: 0 0 0 3px rgba(109, 40, 217, 0.15);
+}
+
+.pw-toggle {
+  position: absolute;
+  right: 0.75rem;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: var(--text-3);
+  display: flex;
+  align-items: center;
+  transition: var(--transition);
+  padding: 0;
+}
+
+.pw-toggle:hover {
+  color: var(--text-1);
+}
+
+/* Danger zone */
+.profile-danger-zone {
+  border-radius: var(--radius-lg);
+  padding: 1.75rem;
+  border: 1px solid rgba(239, 68, 68, 0.2) !important;
+  background: rgba(239, 68, 68, 0.04) !important;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.danger-desc {
+  font-size: 0.88rem;
+  color: var(--text-2);
+  line-height: 1.5;
+}
+
+.danger-logout {
+  width: fit-content;
+  font-size: 0.9rem;
+  font-weight: 600;
+  padding: 0.7rem 1.4rem;
+}
+
+@media (max-width: 768px) {
+  .profile-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .profile-hero {
+    flex-direction: column;
+    text-align: center;
+  }
+
+  .profile-hero-info {
+    align-items: center;
+  }
+}

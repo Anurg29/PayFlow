@@ -76,3 +76,28 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     if user is None:
         raise credentials_exception
     return user
+
+
+# ── Change Password ───────────────────────────────────────────────────────────
+@router.post("/change-password", summary="Change current user password")
+def change_password(
+    data: dict,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    current_password = data.get("current_password")
+    new_password = data.get("new_password")
+
+    if not current_password or not new_password:
+        raise HTTPException(status_code=400, detail="Both current_password and new_password are required")
+
+    if not verify_password(current_password, current_user.hashed_password):
+        raise HTTPException(status_code=401, detail="Current password is incorrect")
+
+    if len(new_password) < 6:
+        raise HTTPException(status_code=400, detail="New password must be at least 6 characters")
+
+    current_user.hashed_password = get_password_hash(new_password)
+    db.commit()
+    return {"message": "Password updated successfully"}
+

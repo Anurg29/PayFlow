@@ -5,6 +5,7 @@ import TransactionsTab from '../components/TransactionsTab'
 import PaymentForm from '../components/PaymentForm'
 import AdminStats from '../components/AdminStats'
 import FlaggedTxns from '../components/FlaggedTxns'
+import Profile from './Profile'
 
 export default function Dashboard() {
     const [activeTab, setActiveTab] = useState('dashboard')
@@ -12,14 +13,11 @@ export default function Dashboard() {
 
     const renderContent = () => {
         switch (activeTab) {
-            case 'dashboard':
-                return <DashboardHome />
-            case 'admin-stats':
-                return <AdminStats />
-            case 'admin-flagged':
-                return <FlaggedTxns />
-            default:
-                return <DashboardHome />
+            case 'dashboard': return <DashboardHome />
+            case 'admin-stats': return <AdminStats />
+            case 'admin-flagged': return <FlaggedTxns />
+            case 'profile': return <Profile />
+            default: return <DashboardHome />
         }
     }
 
