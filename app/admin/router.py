@@ -1,25 +1,24 @@
 """
-/admin  — System-wide admin dashboard.
+/admin  — System-wide admin dashboard (MongoDB).
 Only accessible by users with role = "admin".
 Covers: legacy transactions + new gateway entities.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy.orm import Session
-from sqlalchemy import func, extract
 from typing import List
 from datetime import datetime, timedelta
 from collections import defaultdict
 
 from ..database import get_db
 from .. import models, schemas
+from ..schemas import serialize_doc
 from ..auth.router import get_current_user
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
 
-def require_admin(current_user: models.User = Depends(get_current_user)):
-    if current_user.role != models.UserRole.ADMIN:
+def require_admin(current_user: dict = Depends(get_current_user)):
+    if current_user.get("role") != models.UserRole.ADMIN:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin access required",
@@ -33,41 +32,34 @@ def require_admin(current_user: models.User = Depends(get_current_user)):
 
 @router.get("/transactions", response_model=List[schemas.TransactionOut], summary="All legacy transactions")
 def all_transactions(
-    db: Session = Depends(get_db),
-    _: models.User = Depends(require_admin),
+    db = Depends(get_db),
+    _: dict = Depends(require_admin),
 ):
-    return (
-        db.query(models.Transaction)
-        .order_by(models.Transaction.created_at.desc())
-        .all()
-    )
+    cursor = db[models.TRANSACTIONS].find().sort("created_at", -1)
+    return [serialize_doc(t) for t in cursor]
 
 
 @router.get("/flagged", response_model=List[schemas.TransactionOut], summary="Flagged transactions")
 def flagged_transactions(
-    db: Session = Depends(get_db),
-    _: models.User = Depends(require_admin),
+    db = Depends(get_db),
+    _: dict = Depends(require_admin),
 ):
-    return (
-        db.query(models.Transaction)
-        .filter(models.Transaction.is_flagged == True)
-        .order_by(models.Transaction.created_at.desc())
-        .all()
-    )
+    cursor = db[models.TRANSACTIONS].find({"is_flagged": True}).sort("created_at", -1)
+    return [serialize_doc(t) for t in cursor]
 
 
 @router.get("/stats", response_model=schemas.TransactionStats, summary="Legacy transaction stats")
 def transaction_stats(
-    db: Session = Depends(get_db),
-    _: models.User = Depends(require_admin),
+    db = Depends(get_db),
+    _: dict = Depends(require_admin),
 ):
-    all_txns = db.query(models.Transaction).all()
+    all_txns = list(db[models.TRANSACTIONS].find())
     return schemas.TransactionStats(
         total_transactions=len(all_txns),
-        total_amount=sum(t.amount for t in all_txns),
-        success_count=sum(1 for t in all_txns if t.status == models.TransactionStatus.SUCCESS),
-        failed_count=sum(1 for t in all_txns if t.status == models.TransactionStatus.FAILED),
-        flagged_count=sum(1 for t in all_txns if t.is_flagged),
+        total_amount=sum(t.get("amount", 0) for t in all_txns),
+        success_count=sum(1 for t in all_txns if t.get("status") == models.TransactionStatus.SUCCESS),
+        failed_count=sum(1 for t in all_txns if t.get("status") == models.TransactionStatus.FAILED),
+        flagged_count=sum(1 for t in all_txns if t.get("is_flagged", False)),
     )
 
 
@@ -82,16 +74,20 @@ def transaction_stats(
     description="Total merchants, orders, payments, refunds and transaction volume across the whole platform.",
 )
 def gateway_stats(
-    db: Session = Depends(get_db),
-    _: models.User = Depends(require_admin),
+    db = Depends(get_db),
+    _: dict = Depends(require_admin),
 ):
-    total_merchants = db.query(func.count(models.Merchant.id)).scalar() or 0
-    total_orders    = db.query(func.count(models.Order.id)).scalar() or 0
-    total_payments  = db.query(func.count(models.Payment.id)).scalar() or 0
-    total_volume    = db.query(func.sum(models.Payment.amount)).filter(
-        models.Payment.status == models.PaymentStatus.CAPTURED
-    ).scalar() or 0
-    total_refunds   = db.query(func.count(models.Refund.id)).scalar() or 0
+    total_merchants = db[models.MERCHANTS].count_documents({})
+    total_orders    = db[models.ORDERS].count_documents({})
+    total_payments  = db[models.PAYMENTS].count_documents({})
+    total_refunds   = db[models.REFUNDS].count_documents({})
+
+    pipeline = [
+        {"$match": {"status": models.PaymentStatus.CAPTURED}},
+        {"$group": {"_id": None, "total": {"$sum": "$amount"}}}
+    ]
+    vol_aggr = list(db[models.PAYMENTS].aggregate(pipeline))
+    total_volume = vol_aggr[0]["total"] if vol_aggr else 0
 
     return schemas.GatewayStats(
         total_merchants=total_merchants,
@@ -112,11 +108,14 @@ def gateway_stats(
     summary="List all merchants",
 )
 def all_merchants(
-    db: Session = Depends(get_db),
-    _: models.User = Depends(require_admin),
+    db = Depends(get_db),
+    _: dict = Depends(require_admin),
 ):
-    return db.query(models.Merchant).order_by(models.Merchant.created_at.desc()).all()
+    cursor = db[models.MERCHANTS].find().sort("created_at", -1)
+    return [serialize_doc(m) for m in cursor]
 
+
+from bson import ObjectId
 
 @router.patch(
     "/gateway/merchants/{merchant_id}/verify",
@@ -124,17 +123,22 @@ def all_merchants(
     summary="Verify a merchant account",
 )
 def verify_merchant(
-    merchant_id: int,
-    db: Session = Depends(get_db),
-    _: models.User = Depends(require_admin),
+    merchant_id: str,
+    db = Depends(get_db),
+    _: dict = Depends(require_admin),
 ):
-    merchant = db.query(models.Merchant).filter(models.Merchant.id == merchant_id).first()
+    try:
+        oid = ObjectId(merchant_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid merchant ID")
+
+    merchant = db[models.MERCHANTS].find_one({"_id": oid})
     if not merchant:
         raise HTTPException(status_code=404, detail="Merchant not found")
-    merchant.is_verified = True
-    db.commit()
-    db.refresh(merchant)
-    return merchant
+        
+    db[models.MERCHANTS].update_one({"_id": oid}, {"$set": {"is_verified": True}})
+    merchant["is_verified"] = True
+    return serialize_doc(merchant)
 
 
 @router.patch(
@@ -143,17 +147,22 @@ def verify_merchant(
     summary="Suspend / deactivate a merchant",
 )
 def suspend_merchant(
-    merchant_id: int,
-    db: Session = Depends(get_db),
-    _: models.User = Depends(require_admin),
+    merchant_id: str,
+    db = Depends(get_db),
+    _: dict = Depends(require_admin),
 ):
-    merchant = db.query(models.Merchant).filter(models.Merchant.id == merchant_id).first()
+    try:
+        oid = ObjectId(merchant_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid merchant ID")
+
+    merchant = db[models.MERCHANTS].find_one({"_id": oid})
     if not merchant:
         raise HTTPException(status_code=404, detail="Merchant not found")
-    merchant.is_active = False
-    db.commit()
-    db.refresh(merchant)
-    return merchant
+        
+    db[models.MERCHANTS].update_one({"_id": oid}, {"$set": {"is_active": False}})
+    merchant["is_active"] = False
+    return serialize_doc(merchant)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -166,15 +175,11 @@ def suspend_merchant(
     summary="All payments across all merchants",
 )
 def all_payments(
-    db: Session = Depends(get_db),
-    _: models.User = Depends(require_admin),
+    db = Depends(get_db),
+    _: dict = Depends(require_admin),
 ):
-    return (
-        db.query(models.Payment)
-        .order_by(models.Payment.created_at.desc())
-        .limit(200)
-        .all()
-    )
+    cursor = db[models.PAYMENTS].find().sort("created_at", -1).limit(200)
+    return [serialize_doc(p) for p in cursor]
 
 
 @router.get(
@@ -183,15 +188,11 @@ def all_payments(
     summary="Flagged / suspicious payments",
 )
 def flagged_payments(
-    db: Session = Depends(get_db),
-    _: models.User = Depends(require_admin),
+    db = Depends(get_db),
+    _: dict = Depends(require_admin),
 ):
-    return (
-        db.query(models.Payment)
-        .filter(models.Payment.is_flagged == True)
-        .order_by(models.Payment.created_at.desc())
-        .all()
-    )
+    cursor = db[models.PAYMENTS].find({"is_flagged": True}).sort("created_at", -1)
+    return [serialize_doc(p) for p in cursor]
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -204,15 +205,11 @@ def flagged_payments(
     summary="All refunds",
 )
 def all_refunds(
-    db: Session = Depends(get_db),
-    _: models.User = Depends(require_admin),
+    db = Depends(get_db),
+    _: dict = Depends(require_admin),
 ):
-    return (
-        db.query(models.Refund)
-        .order_by(models.Refund.created_at.desc())
-        .limit(200)
-        .all()
-    )
+    cursor = db[models.REFUNDS].find().sort("created_at", -1).limit(200)
+    return [serialize_doc(r) for r in cursor]
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -221,6 +218,8 @@ def all_refunds(
 
 def _period_key(dt: datetime, period_type: str) -> str:
     """Convert a datetime to a bucket key string."""
+    if not isinstance(dt, datetime):
+        return ""
     if period_type == "daily":
         return dt.strftime("%Y-%m-%d")
     elif period_type == "weekly":
@@ -244,22 +243,14 @@ def _period_key(dt: datetime, period_type: str) -> str:
 def revenue_dashboard(
     period: str = Query("daily", regex="^(daily|weekly|monthly)$"),
     days: int = Query(30, ge=1, le=365),
-    db: Session = Depends(get_db),
-    _: models.User = Depends(require_admin),
+    db = Depends(get_db),
+    _: dict = Depends(require_admin),
 ):
     cutoff = datetime.utcnow() - timedelta(days=days)
 
     # Fetch all payments + refunds in the window
-    payments = (
-        db.query(models.Payment)
-        .filter(models.Payment.created_at >= cutoff)
-        .all()
-    )
-    refunds = (
-        db.query(models.Refund)
-        .filter(models.Refund.created_at >= cutoff)
-        .all()
-    )
+    payments = list(db[models.PAYMENTS].find({"created_at": {"$gte": cutoff}}))
+    refunds = list(db[models.REFUNDS].find({"created_at": {"$gte": cutoff}}))
 
     # Build per-period buckets
     buckets_data: dict[str, dict] = defaultdict(lambda: {
@@ -268,17 +259,19 @@ def revenue_dashboard(
     })
 
     for p in payments:
-        key = _period_key(p.created_at, period)
+        if "created_at" not in p: continue
+        key = _period_key(p["created_at"], period)
         buckets_data[key]["total"] += 1
-        if p.status == models.PaymentStatus.CAPTURED:
-            buckets_data[key]["gmv"] += p.amount
+        if p.get("status") == models.PaymentStatus.CAPTURED:
+            buckets_data[key]["gmv"] += p.get("amount", 0)
             buckets_data[key]["success"] += 1
-        elif p.status == models.PaymentStatus.FAILED:
+        elif p.get("status") == models.PaymentStatus.FAILED:
             buckets_data[key]["failed"] += 1
 
     for r in refunds:
-        key = _period_key(r.created_at, period)
-        buckets_data[key]["refunds"] += r.amount
+        if "created_at" not in r: continue
+        key = _period_key(r["created_at"], period)
+        buckets_data[key]["refunds"] += r.get("amount", 0)
         buckets_data[key]["refund_count"] += 1
 
     # Build sorted bucket list
@@ -345,8 +338,8 @@ SGST_RATE = GST_RATE / 2  # 9% State
 )
 def gst_report(
     fy: int = Query(None, description="FY start year, e.g. 2025 for FY 2025-26"),
-    db: Session = Depends(get_db),
-    _: models.User = Depends(require_admin),
+    db = Depends(get_db),
+    _: dict = Depends(require_admin),
 ):
     now = datetime.utcnow()
     if fy is None:
@@ -356,23 +349,13 @@ def gst_report(
     fy_label = f"FY {fy}-{str(fy + 1)[-2:]}"
 
     # Fetch payments + refunds in the FY
-    payments = (
-        db.query(models.Payment)
-        .filter(
-            models.Payment.status == models.PaymentStatus.CAPTURED,
-            models.Payment.created_at >= fy_start,
-            models.Payment.created_at <= fy_end,
-        )
-        .all()
-    )
-    refunds = (
-        db.query(models.Refund)
-        .filter(
-            models.Refund.created_at >= fy_start,
-            models.Refund.created_at <= fy_end,
-        )
-        .all()
-    )
+    payments = list(db[models.PAYMENTS].find({
+        "status": models.PaymentStatus.CAPTURED,
+        "created_at": {"$gte": fy_start, "$lte": fy_end}
+    }))
+    refunds = list(db[models.REFUNDS].find({
+        "created_at": {"$gte": fy_start, "$lte": fy_end}
+    }))
 
     # Bucket by month
     monthly_gross: dict[str, int] = defaultdict(int)
@@ -380,13 +363,15 @@ def gst_report(
     monthly_count: dict[str, int] = defaultdict(int)
 
     for p in payments:
-        key = p.created_at.strftime("%Y-%m")
-        monthly_gross[key] += p.amount
+        if "created_at" not in p: continue
+        key = p["created_at"].strftime("%Y-%m")
+        monthly_gross[key] += p.get("amount", 0)
         monthly_count[key] += 1
 
     for r in refunds:
-        key = r.created_at.strftime("%Y-%m")
-        monthly_refunds[key] += r.amount
+        if "created_at" not in r: continue
+        key = r["created_at"].strftime("%Y-%m")
+        monthly_refunds[key] += r.get("amount", 0)
 
     # Generate all 12 months of the FY
     all_months = []
@@ -435,4 +420,3 @@ def gst_report(
         total_net_taxable_paise=total_net,
         total_gst_paise=total_gst,
     )
-

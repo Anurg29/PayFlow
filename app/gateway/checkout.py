@@ -1,5 +1,5 @@
 """
-Hosted Checkout Router — /pay/{order_ref}
+Hosted Checkout Router — /pay/{order_ref} (MongoDB)
 End-users land here to complete payment.
 """
 
@@ -7,10 +7,11 @@ import random
 import datetime
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse
-from sqlalchemy.orm import Session
+from bson import ObjectId
 
 from ..database import get_db
 from .. import models, schemas
+from ..schemas import serialize_doc
 from .keys import generate_payment_ref
 from .fraud import check_payment_fraud
 
@@ -23,27 +24,22 @@ router = APIRouter(prefix="/pay", tags=["Hosted Checkout"])
     "/{order_ref}",
     response_model=schemas.PaymentOut,
     summary="Submit payment for an order",
-    description=(
-        "Called by the PayFlow Checkout JS SDK or your server when the customer "
-        "submits payment details. Processes the payment and fires webhooks."
-    ),
 )
 def submit_payment(
     order_ref: str,
     payload: schemas.PaymentCheckoutRequest,
-    db: Session = Depends(get_db),
+    db = Depends(get_db),
 ):
     # Validate order
-    order = db.query(models.Order).filter(
-        models.Order.order_ref == order_ref
-    ).first()
+    order = db[models.ORDERS].find_one({"order_ref": order_ref})
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
-    if order.status == models.OrderStatus.PAID:
+        
+    if order.get("status") == models.OrderStatus.PAID:
         raise HTTPException(status_code=400, detail="Order already paid")
-    if order.expires_at and order.expires_at < datetime.datetime.utcnow():
-        order.status = models.OrderStatus.EXPIRED
-        db.commit()
+        
+    if order.get("expires_at") and order["expires_at"] < datetime.datetime.utcnow():
+        db[models.ORDERS].update_one({"_id": order["_id"]}, {"$set": {"status": models.OrderStatus.EXPIRED}})
         raise HTTPException(status_code=400, detail="Order has expired")
 
     # Validate method
@@ -58,7 +54,7 @@ def submit_payment(
     is_flagged, flag_reason = check_payment_fraud(
         db=db,
         order=order,
-        amount=order.amount,
+        amount=order.get("amount", 0),
         method=payload.method.lower(),
         vpa=payload.vpa,
     )
@@ -74,59 +70,59 @@ def submit_payment(
         card_network = network_map.get(digits[0], "Unknown")
 
     # Update attempt count
-    order.attempts += 1
-    order.status = models.OrderStatus.ATTEMPTED
-    db.commit()
+    db[models.ORDERS].update_one(
+        {"_id": order["_id"]},
+        {"$inc": {"attempts": 1}, "$set": {"status": models.OrderStatus.ATTEMPTED}}
+    )
 
     # Simulate gateway outcome (96% success)
     success = random.random() < 0.96
     pay_status = models.PaymentStatus.CAPTURED if success else models.PaymentStatus.FAILED
 
-    payment = models.Payment(
-        payment_ref=generate_payment_ref(),
-        order_id=order.id,
-        amount=order.amount,
-        currency=order.currency,
-        method=payload.method.lower(),
-        status=pay_status,
-        email=payload.email,
-        contact=payload.contact,
-        vpa=payload.vpa,
-        card_number_masked=card_masked,
-        card_network=card_network,
-        is_flagged=is_flagged,
-        flag_reason=flag_reason,
-        captured_at=datetime.datetime.utcnow() if success else None,
-    )
-    db.add(payment)
+    payment = {
+        "payment_ref": generate_payment_ref(),
+        "order_id": str(order["_id"]),
+        "amount": order.get("amount", 0),
+        "currency": order.get("currency", "INR"),
+        "method": payload.method.lower(),
+        "status": pay_status,
+        "email": payload.email,
+        "contact": payload.contact,
+        "vpa": payload.vpa,
+        "card_number_masked": card_masked,
+        "card_network": card_network,
+        "is_flagged": is_flagged,
+        "flag_reason": flag_reason,
+        "captured_at": datetime.datetime.utcnow() if success else None,
+        "created_at": datetime.datetime.utcnow(),
+        "amount_refunded": 0,
+    }
+    result = db[models.PAYMENTS].insert_one(payment)
+    payment["_id"] = result.inserted_id
 
     if success:
-        order.status = models.OrderStatus.PAID
-
-    db.commit()
-    db.refresh(payment)
+        db[models.ORDERS].update_one({"_id": order["_id"]}, {"$set": {"status": models.OrderStatus.PAID}})
 
     # Fire webhook asynchronously (best-effort)
-    merchant = order.merchant
-    if merchant and merchant.webhook_url:
+    merchant = db[models.MERCHANTS].find_one({"_id": ObjectId(order["merchant_id"])})
+    if merchant and merchant.get("webhook_url"):
         try:
             from .webhooks import dispatch_webhook
             dispatch_webhook(
-                db=db,
-                merchant=merchant,
-                event_type="payment.captured" if success else "payment.failed",
-                data={
-                    "payment_ref": payment.payment_ref,
+                merchant["_id"],
+                "payment.captured" if success else "payment.failed",
+                {
+                    "payment_ref": payment["payment_ref"],
                     "order_ref": order_ref,
-                    "amount": payment.amount,
-                    "method": payment.method,
-                    "status": payment.status,
+                    "amount": payment["amount"],
+                    "method": payment["method"],
+                    "status": payment["status"],
                 },
             )
         except Exception:
             pass  # Never block checkout for webhook failures
 
-    return payment
+    return serialize_doc(payment)
 
 
 # ─── Hosted checkout HTML page ────────────────────────────────────────────────
@@ -135,24 +131,22 @@ def submit_payment(
     "/{order_ref}",
     response_class=HTMLResponse,
     summary="Hosted payment page",
-    description="Redirect your customers to this URL. It renders the PayFlow Checkout UI.",
 )
-def checkout_page(order_ref: str, db: Session = Depends(get_db)):
-    order = db.query(models.Order).filter(
-        models.Order.order_ref == order_ref
-    ).first()
+def checkout_page(order_ref: str, db = Depends(get_db)):
+    order = db[models.ORDERS].find_one({"order_ref": order_ref})
     if not order:
         return HTMLResponse("<h2>Order not found</h2>", status_code=404)
 
-    merchant = order.merchant
-    amount_rupees = order.amount / 100   # paise → ₹
+    merchant = db[models.MERCHANTS].find_one({"_id": ObjectId(order["merchant_id"])})
+    business_name = merchant["business_name"] if merchant else "PayFlow Checkout"
+    amount_rupees = order.get("amount", 0) / 100   # paise → ₹
 
     page = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>PayFlow Checkout — {merchant.business_name}</title>
+  <title>PayFlow Checkout — {business_name}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <style>
@@ -307,7 +301,7 @@ def checkout_page(order_ref: str, db: Session = Depends(get_db)):
 <body>
   <div class="checkout-card">
     <div class="checkout-header">
-      <div class="merchant-name">🏪 {merchant.business_name}</div>
+      <div class="merchant-name">🏪 {business_name}</div>
       <div class="amount"><span>₹</span>{amount_rupees:,.2f}</div>
       <div class="order-ref">Order #{order_ref}</div>
     </div>

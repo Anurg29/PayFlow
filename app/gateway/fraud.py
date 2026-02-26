@@ -1,5 +1,5 @@
 """
-Fraud detection for PayFlow Gateway payments.
+Fraud detection for PayFlow Gateway payments. (MongoDB)
 Rules:
   1. High Value     — amount > ₹50,000 (5,000,000 paise)
   2. Duplicate      — same amount for same merchant within 60 s
@@ -9,13 +9,12 @@ Rules:
 """
 
 import datetime
-from sqlalchemy.orm import Session
 from .. import models
-
+from bson import ObjectId
 
 def check_payment_fraud(
-    db: Session,
-    order: models.Order,
+    db,
+    order: dict,
     amount: int,
     method: str,
     vpa: str | None = None,
@@ -33,15 +32,13 @@ def check_payment_fraud(
     one_minute_ago = datetime.datetime.utcnow() - datetime.timedelta(seconds=60)
 
     # Rule 2 & 3: Duplicate / High Frequency on this order
-    recent_payments = (
-        db.query(models.Payment)
-        .filter(
-            models.Payment.order_id == order.id,
-            models.Payment.created_at >= one_minute_ago,
-        )
-        .all()
+    recent_payments = list(
+        db[models.PAYMENTS].find({
+            "order_id": str(order["_id"]),
+            "created_at": {"$gte": one_minute_ago}
+        })
     )
-    same_amount = [p for p in recent_payments if p.amount == amount]
+    same_amount = [p for p in recent_payments if p.get("amount") == amount]
     if same_amount:
         reasons.append("duplicate_amount")
     if len(recent_payments) >= 5:
@@ -52,15 +49,18 @@ def check_payment_fraud(
         reasons.append("invalid_vpa")
 
     # Rule 5: Merchant-level velocity
-    recent_merchant_payments = (
-        db.query(models.Payment)
-        .join(models.Order, models.Payment.order_id == models.Order.id)
-        .filter(
-            models.Order.merchant_id == order.merchant_id,
-            models.Payment.created_at >= one_minute_ago,
-        )
-        .count()
-    )
+    # Find all orders in last min for this merchant
+    recent_orders = list(db[models.ORDERS].find({
+        "merchant_id": str(order["merchant_id"]),
+        "created_at": {"$gte": one_minute_ago}
+    }))
+    order_ids = [str(o["_id"]) for o in recent_orders]
+    
+    recent_merchant_payments = db[models.PAYMENTS].count_documents({
+        "order_id": {"$in": order_ids},
+        "created_at": {"$gte": one_minute_ago}
+    })
+    
     if recent_merchant_payments >= 50:
         reasons.append("merchant_velocity")
 

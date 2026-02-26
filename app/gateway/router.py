@@ -1,19 +1,18 @@
 """
-PayFlow Gateway API — v1
+PayFlow Gateway API — v1 (MongoDB)
 Endpoints that MERCHANT apps call (authenticated via API key).
 
 Base path: /v1
 """
 
-import json
-import random
 import datetime
+from bson import ObjectId
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
-from sqlalchemy.orm import Session
 
 from ..database import get_db
 from .. import models, schemas
+from ..schemas import serialize_doc
 from .auth import get_merchant_from_api_key
 from .keys import generate_order_ref, generate_payment_ref, generate_refund_ref
 from .fraud import check_payment_fraud
@@ -31,36 +30,32 @@ router = APIRouter(prefix="/v1", tags=["Gateway API v1"])
     response_model=schemas.OrderOut,
     status_code=status.HTTP_201_CREATED,
     summary="Create an order",
-    description=(
-        "**Step 1 of checkout flow.**\n\n"
-        "Create an order with `amount` (in paise) and `currency`. "
-        "Returns `order_ref` which you pass to the PayFlow Checkout JS SDK or redirect the user to "
-        "`https://payflow.app/pay/{order_ref}`."
-    ),
 )
 def create_order(
     payload: schemas.OrderCreate,
-    merchant: models.Merchant = Depends(get_merchant_from_api_key),
-    db: Session = Depends(get_db),
+    merchant: dict = Depends(get_merchant_from_api_key),
+    db = Depends(get_db),
 ):
     if payload.amount <= 0:
         raise HTTPException(status_code=400, detail="Amount must be greater than 0 paise")
     if payload.currency not in {"INR", "USD", "EUR"}:
         raise HTTPException(status_code=400, detail="Unsupported currency. Use INR, USD, or EUR")
 
-    order = models.Order(
-        order_ref=generate_order_ref(),
-        merchant_id=merchant.id,
-        amount=payload.amount,
-        currency=payload.currency,
-        receipt=payload.receipt,
-        notes=payload.notes,
-        expires_at=datetime.datetime.utcnow() + datetime.timedelta(minutes=30),
-    )
-    db.add(order)
-    db.commit()
-    db.refresh(order)
-    return order
+    doc = {
+        "order_ref": generate_order_ref(),
+        "merchant_id": str(merchant["_id"]),
+        "amount": payload.amount,
+        "currency": payload.currency,
+        "receipt": payload.receipt,
+        "notes": payload.notes,
+        "status": models.OrderStatus.CREATED,
+        "attempts": 0,
+        "expires_at": datetime.datetime.utcnow() + datetime.timedelta(minutes=30),
+        "created_at": datetime.datetime.utcnow(),
+    }
+    result = db[models.ORDERS].insert_one(doc)
+    doc["_id"] = result.inserted_id
+    return serialize_doc(doc)
 
 
 @router.get(
@@ -70,16 +65,16 @@ def create_order(
 )
 def get_order(
     order_ref: str,
-    merchant: models.Merchant = Depends(get_merchant_from_api_key),
-    db: Session = Depends(get_db),
+    merchant: dict = Depends(get_merchant_from_api_key),
+    db = Depends(get_db),
 ):
-    order = db.query(models.Order).filter(
-        models.Order.order_ref == order_ref,
-        models.Order.merchant_id == merchant.id,
-    ).first()
+    order = db[models.ORDERS].find_one({
+        "order_ref": order_ref,
+        "merchant_id": str(merchant["_id"]),
+    })
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
-    return order
+    return serialize_doc(order)
 
 
 @router.get(
@@ -88,16 +83,15 @@ def get_order(
     summary="List all orders",
 )
 def list_orders(
-    merchant: models.Merchant = Depends(get_merchant_from_api_key),
-    db: Session = Depends(get_db),
+    merchant: dict = Depends(get_merchant_from_api_key),
+    db = Depends(get_db),
 ):
-    return (
-        db.query(models.Order)
-        .filter(models.Order.merchant_id == merchant.id)
-        .order_by(models.Order.created_at.desc())
+    cursor = (
+        db[models.ORDERS].find({"merchant_id": str(merchant["_id"])})
+        .sort("created_at", -1)
         .limit(100)
-        .all()
     )
+    return [serialize_doc(o) for o in cursor]
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -111,21 +105,19 @@ def list_orders(
 )
 def get_payment(
     payment_ref: str,
-    merchant: models.Merchant = Depends(get_merchant_from_api_key),
-    db: Session = Depends(get_db),
+    merchant: dict = Depends(get_merchant_from_api_key),
+    db = Depends(get_db),
 ):
-    payment = (
-        db.query(models.Payment)
-        .join(models.Order, models.Payment.order_id == models.Order.id)
-        .filter(
-            models.Payment.payment_ref == payment_ref,
-            models.Order.merchant_id == merchant.id,
-        )
-        .first()
-    )
+    payment = db[models.PAYMENTS].find_one({"payment_ref": payment_ref})
     if not payment:
         raise HTTPException(status_code=404, detail="Payment not found")
-    return payment
+    
+    # Verify order belongs to this merchant
+    order = db[models.ORDERS].find_one({"_id": ObjectId(payment["order_id"]), "merchant_id": str(merchant["_id"])})
+    if not order:
+        raise HTTPException(status_code=404, detail="Payment not found")
+
+    return serialize_doc(payment)
 
 
 @router.get(
@@ -135,67 +127,63 @@ def get_payment(
 )
 def list_order_payments(
     order_ref: str,
-    merchant: models.Merchant = Depends(get_merchant_from_api_key),
-    db: Session = Depends(get_db),
+    merchant: dict = Depends(get_merchant_from_api_key),
+    db = Depends(get_db),
 ):
-    order = db.query(models.Order).filter(
-        models.Order.order_ref == order_ref,
-        models.Order.merchant_id == merchant.id,
-    ).first()
+    order = db[models.ORDERS].find_one({
+        "order_ref": order_ref,
+        "merchant_id": str(merchant["_id"]),
+    })
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
-    return order.payments
+        
+    cursor = db[models.PAYMENTS].find({"order_id": str(order["_id"])})
+    return [serialize_doc(p) for p in cursor]
 
 
 @router.post(
     "/payments/{payment_ref}/capture",
     response_model=schemas.PaymentOut,
     summary="Capture an authorized payment",
-    description=(
-        "Captures a payment that is in `authorized` state. "
-        "For most payment methods, PayFlow auto-captures. "
-        "Use this for two-step auth flows."
-    ),
 )
 def capture_payment(
     payment_ref: str,
     background_tasks: BackgroundTasks,
-    merchant: models.Merchant = Depends(get_merchant_from_api_key),
-    db: Session = Depends(get_db),
+    merchant: dict = Depends(get_merchant_from_api_key),
+    db = Depends(get_db),
 ):
-    payment = (
-        db.query(models.Payment)
-        .join(models.Order)
-        .filter(
-            models.Payment.payment_ref == payment_ref,
-            models.Order.merchant_id == merchant.id,
-        )
-        .first()
-    )
+    payment = db[models.PAYMENTS].find_one({"payment_ref": payment_ref})
     if not payment:
         raise HTTPException(status_code=404, detail="Payment not found")
-    if payment.status != models.PaymentStatus.AUTHORIZED:
+        
+    order = db[models.ORDERS].find_one({"_id": ObjectId(payment["order_id"]), "merchant_id": str(merchant["_id"])})
+    if not order:
+        raise HTTPException(status_code=404, detail="Payment not found")
+
+    if payment.get("status") != models.PaymentStatus.AUTHORIZED:
         raise HTTPException(
             status_code=400,
-            detail=f"Cannot capture payment in status '{payment.status}'"
+            detail=f"Cannot capture payment in status '{payment.get('status')}'"
         )
 
-    payment.status = models.PaymentStatus.CAPTURED
-    payment.captured_at = datetime.datetime.utcnow()
-
-    # Update order status
-    order = payment.order
-    order.status = models.OrderStatus.PAID
-    db.commit()
-    db.refresh(payment)
-
-    # Fire webhook
-    background_tasks.add_task(
-        dispatch_webhook, db, merchant,
-        "payment.captured",
-        {"payment_ref": payment.payment_ref, "amount": payment.amount},
+    db[models.PAYMENTS].update_one(
+        {"_id": payment["_id"]},
+        {"$set": {"status": models.PaymentStatus.CAPTURED, "captured_at": datetime.datetime.utcnow()}}
     )
-    return payment
+    payment["status"] = models.PaymentStatus.CAPTURED
+    payment["captured_at"] = datetime.datetime.utcnow()
+
+    db[models.ORDERS].update_one(
+        {"_id": order["_id"]},
+        {"$set": {"status": models.OrderStatus.PAID}}
+    )
+
+    background_tasks.add_task(
+        dispatch_webhook, merchant["_id"], "payment.captured",
+        {"payment_ref": payment["payment_ref"], "amount": payment["amount"]}
+    )
+    
+    return serialize_doc(payment)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -207,39 +195,31 @@ def capture_payment(
     response_model=schemas.RefundOut,
     status_code=status.HTTP_201_CREATED,
     summary="Issue a refund",
-    description=(
-        "Refund a captured payment fully or partially. "
-        "Leave `amount` empty for a full refund."
-    ),
 )
 def create_refund(
     payment_ref: str,
     payload: schemas.RefundCreate,
     background_tasks: BackgroundTasks,
-    merchant: models.Merchant = Depends(get_merchant_from_api_key),
-    db: Session = Depends(get_db),
+    merchant: dict = Depends(get_merchant_from_api_key),
+    db = Depends(get_db),
 ):
-    payment = (
-        db.query(models.Payment)
-        .join(models.Order)
-        .filter(
-            models.Payment.payment_ref == payment_ref,
-            models.Order.merchant_id == merchant.id,
-        )
-        .first()
-    )
+    payment = db[models.PAYMENTS].find_one({"payment_ref": payment_ref})
     if not payment:
         raise HTTPException(status_code=404, detail="Payment not found")
-    if payment.status not in {
-        models.PaymentStatus.CAPTURED, models.PaymentStatus.AUTHORIZED
-    }:
+        
+    order = db[models.ORDERS].find_one({"_id": ObjectId(payment["order_id"]), "merchant_id": str(merchant["_id"])})
+    if not order:
+        raise HTTPException(status_code=404, detail="Payment not found")
+
+    if payment.get("status") not in {models.PaymentStatus.CAPTURED, models.PaymentStatus.AUTHORIZED}:
         raise HTTPException(
             status_code=400,
-            detail=f"Cannot refund payment with status '{payment.status}'"
+            detail=f"Cannot refund payment with status '{payment.get('status')}'"
         )
 
-    refund_amount = payload.amount or (payment.amount - payment.amount_refunded)
-    remaining = payment.amount - payment.amount_refunded
+    amt_refunded = payment.get("amount_refunded", 0)
+    refund_amount = payload.amount or (payment["amount"] - amt_refunded)
+    remaining = payment["amount"] - amt_refunded
 
     if refund_amount > remaining:
         raise HTTPException(
@@ -247,34 +227,39 @@ def create_refund(
             detail=f"Refund amount {refund_amount} exceeds refundable amount {remaining}"
         )
 
-    refund = models.Refund(
-        refund_ref=generate_refund_ref(),
-        payment_id=payment.id,
-        amount=refund_amount,
-        reason=payload.reason,
-        notes=payload.notes,
-        status="processed",
-        processed_at=datetime.datetime.utcnow(),
+    refund = {
+        "refund_ref": generate_refund_ref(),
+        "payment_id": str(payment["_id"]),
+        "amount": refund_amount,
+        "reason": payload.reason,
+        "notes": payload.notes,
+        "status": "processed",
+        "created_at": datetime.datetime.utcnow(),
+        "processed_at": datetime.datetime.utcnow(),
+    }
+    r = db[models.REFUNDS].insert_one(refund)
+    refund["_id"] = r.inserted_id
+
+    new_refunded = amt_refunded + refund_amount
+    new_status = models.PaymentStatus.REFUNDED if new_refunded >= payment["amount"] else payment["status"]
+    
+    db[models.PAYMENTS].update_one(
+        {"_id": payment["_id"]},
+        {
+            "$set": {
+                "amount_refunded": new_refunded,
+                "status": new_status,
+                "refund_status": "full" if new_refunded >= payment["amount"] else "partial"
+            }
+        }
     )
-    db.add(refund)
 
-    payment.amount_refunded += refund_amount
-    if payment.amount_refunded >= payment.amount:
-        payment.status = models.PaymentStatus.REFUNDED
-        payment.refund_status = "full"
-    else:
-        payment.refund_status = "partial"
-
-    db.commit()
-    db.refresh(refund)
-
-    # Fire webhook
     background_tasks.add_task(
-        dispatch_webhook, db, merchant,
-        "refund.processed",
-        {"refund_ref": refund.refund_ref, "amount": refund.amount},
+        dispatch_webhook, merchant["_id"], "refund.processed",
+        {"refund_ref": refund["refund_ref"], "amount": refund["amount"]}
     )
-    return refund
+    
+    return serialize_doc(refund)
 
 
 @router.get(
@@ -284,21 +269,19 @@ def create_refund(
 )
 def list_refunds(
     payment_ref: str,
-    merchant: models.Merchant = Depends(get_merchant_from_api_key),
-    db: Session = Depends(get_db),
+    merchant: dict = Depends(get_merchant_from_api_key),
+    db = Depends(get_db),
 ):
-    payment = (
-        db.query(models.Payment)
-        .join(models.Order)
-        .filter(
-            models.Payment.payment_ref == payment_ref,
-            models.Order.merchant_id == merchant.id,
-        )
-        .first()
-    )
+    payment = db[models.PAYMENTS].find_one({"payment_ref": payment_ref})
     if not payment:
         raise HTTPException(status_code=404, detail="Payment not found")
-    return payment.refunds
+        
+    order = db[models.ORDERS].find_one({"_id": ObjectId(payment["order_id"]), "merchant_id": str(merchant["_id"])})
+    if not order:
+        raise HTTPException(status_code=404, detail="Payment not found")
+
+    cursor = db[models.REFUNDS].find({"payment_id": str(payment["_id"])})
+    return [serialize_doc(r) for r in cursor]
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -311,13 +294,12 @@ def list_refunds(
     summary="View webhook delivery logs",
 )
 def webhook_logs(
-    merchant: models.Merchant = Depends(get_merchant_from_api_key),
-    db: Session = Depends(get_db),
+    merchant: dict = Depends(get_merchant_from_api_key),
+    db = Depends(get_db),
 ):
-    return (
-        db.query(models.WebhookLog)
-        .filter(models.WebhookLog.merchant_id == merchant.id)
-        .order_by(models.WebhookLog.created_at.desc())
+    cursor = (
+        db[models.WEBHOOK_LOGS].find({"merchant_id": str(merchant["_id"])})
+        .sort("created_at", -1)
         .limit(50)
-        .all()
     )
+    return [serialize_doc(w) for w in cursor]

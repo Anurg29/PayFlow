@@ -1,11 +1,24 @@
 """
 PayFlow Schemas — Pydantic I/O models for all endpoints.
+Adapted for MongoDB (ObjectId → str serialization).
 """
 
-from pydantic import BaseModel, HttpUrl
-from typing import Optional, List
+from pydantic import BaseModel, Field
+from typing import Optional, List, Any
 from datetime import datetime
 from .models import UserRole
+
+
+# ─── MongoDB ObjectId Helper ──────────────────────────────────────────────────
+
+def serialize_doc(doc: dict) -> dict:
+    """Convert MongoDB document for JSON output — _id → id as string."""
+    if doc is None:
+        return doc
+    doc = dict(doc)
+    if "_id" in doc:
+        doc["id"] = str(doc.pop("_id"))
+    return doc
 
 
 # ─── User / Auth ──────────────────────────────────────────────────────────────
@@ -20,8 +33,11 @@ class UserCreate(UserBase):
     password: str
 
 
-class UserOut(UserBase):
-    id: int
+class UserOut(BaseModel):
+    id: str
+    name: str
+    email: str
+    role: Optional[str] = "user"
 
     class Config:
         from_attributes = True
@@ -52,14 +68,14 @@ class MerchantUpdate(BaseModel):
 
 
 class MerchantOut(BaseModel):
-    id: int
-    user_id: int
+    id: str
+    user_id: str
     business_name: str
     business_email: str
-    website: Optional[str]
-    webhook_url: Optional[str]
-    is_active: bool
-    is_verified: bool
+    website: Optional[str] = None
+    webhook_url: Optional[str] = None
+    is_active: bool = True
+    is_verified: bool = False
     created_at: datetime
 
     class Config:
@@ -73,7 +89,7 @@ class ApiKeyCreate(BaseModel):
 
 
 class ApiKeyOut(BaseModel):
-    id: int
+    id: str
     key_id: str
     label: str
     is_active: bool
@@ -94,18 +110,18 @@ class OrderCreate(BaseModel):
     amount: int                          # in paise (₹1 = 100)
     currency: Optional[str] = "INR"
     receipt: Optional[str] = None
-    notes: Optional[str] = None         # free-form JSON string
+    notes: Optional[str] = None
 
 
 class OrderOut(BaseModel):
-    id: int
+    id: str
     order_ref: str
     amount: int
     currency: str
     status: str
-    receipt: Optional[str]
-    notes: Optional[str]
-    attempts: int
+    receipt: Optional[str] = None
+    notes: Optional[str] = None
+    attempts: int = 0
     created_at: datetime
 
     class Config:
@@ -115,14 +131,11 @@ class OrderOut(BaseModel):
 # ─── Payments ─────────────────────────────────────────────────────────────────
 
 class PaymentCheckoutRequest(BaseModel):
-    """Sent by the checkout page / SDK when user submits payment."""
     order_ref: str
-    method: str                          # upi | card | netbanking | wallet
+    method: str
     email: Optional[str] = None
     contact: Optional[str] = None
-    # UPI
     vpa: Optional[str] = None
-    # Card
     card_number: Optional[str] = None
     card_expiry: Optional[str] = None
     card_cvv: Optional[str] = None
@@ -130,22 +143,22 @@ class PaymentCheckoutRequest(BaseModel):
 
 
 class PaymentOut(BaseModel):
-    id: int
+    id: str
     payment_ref: str
-    order_id: int
+    order_id: str
     amount: int
     currency: str
     method: str
     status: str
-    email: Optional[str]
-    contact: Optional[str]
-    vpa: Optional[str]
-    card_number_masked: Optional[str]
-    card_network: Optional[str]
-    amount_refunded: int
-    is_flagged: bool
+    email: Optional[str] = None
+    contact: Optional[str] = None
+    vpa: Optional[str] = None
+    card_number_masked: Optional[str] = None
+    card_network: Optional[str] = None
+    amount_refunded: int = 0
+    is_flagged: bool = False
     created_at: datetime
-    captured_at: Optional[datetime]
+    captured_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
@@ -154,18 +167,18 @@ class PaymentOut(BaseModel):
 # ─── Refunds ──────────────────────────────────────────────────────────────────
 
 class RefundCreate(BaseModel):
-    amount: Optional[int] = None        # None = full refund
+    amount: Optional[int] = None
     reason: Optional[str] = None
     notes: Optional[str] = None
 
 
 class RefundOut(BaseModel):
-    id: int
+    id: str
     refund_ref: str
-    payment_id: int
+    payment_id: str
     amount: int
     status: str
-    reason: Optional[str]
+    reason: Optional[str] = None
     created_at: datetime
 
     class Config:
@@ -175,11 +188,11 @@ class RefundOut(BaseModel):
 # ─── Webhook ──────────────────────────────────────────────────────────────────
 
 class WebhookLogOut(BaseModel):
-    id: int
+    id: str
     event_type: str
     target_url: str
     success: bool
-    response_status: Optional[int]
+    response_status: Optional[int] = None
     created_at: datetime
 
     class Config:
@@ -195,13 +208,13 @@ class TransactionCreate(BaseModel):
 
 
 class TransactionOut(BaseModel):
-    id: int
+    id: str
     amount: float
     payment_method: str
     status: str
     idempotency_key: str
     is_flagged: bool
-    user_id: int
+    user_id: str
     created_at: datetime
 
     class Config:
@@ -229,22 +242,20 @@ class GatewayStats(BaseModel):
 # ─── Revenue Dashboard ────────────────────────────────────────────────────────
 
 class RevenueBucket(BaseModel):
-    """A single day/week/month data point."""
-    period: str                       # e.g. "2026-02-25", "2026-W08", "2026-02"
-    total_gmv_paise: int              # Gross Merchandise Value (captured)
+    period: str
+    total_gmv_paise: int
     total_refunds_paise: int
-    net_revenue_paise: int            # gmv - refunds
+    net_revenue_paise: int
     transaction_count: int
     success_count: int
     failed_count: int
     refund_count: int
-    success_rate: float               # 0.0 – 1.0
-    refund_rate: float                # 0.0 – 1.0
+    success_rate: float
+    refund_rate: float
 
 
 class RevenueDashboard(BaseModel):
-    """Aggregated revenue overview."""
-    period_type: str                  # "daily", "weekly", "monthly"
+    period_type: str
     buckets: list[RevenueBucket]
     total_gmv_paise: int
     total_refunds_paise: int
@@ -256,26 +267,23 @@ class RevenueDashboard(BaseModel):
 # ─── Tax / GST Report ─────────────────────────────────────────────────────────
 
 class GSTLineItem(BaseModel):
-    """One row in a GST report (per month)."""
-    month: str                        # "2026-02"
-    gross_revenue_paise: int          # total captured payments
+    month: str
+    gross_revenue_paise: int
     refunds_paise: int
-    net_taxable_paise: int            # gross - refunds
-    cgst_paise: int                   # Central GST  @ 9%
-    sgst_paise: int                   # State GST    @ 9%
-    igst_paise: int                   # Integrated   @ 18%  (applied when inter-state)
-    total_gst_paise: int              # cgst + sgst  or igst
-    total_with_gst_paise: int         # net_taxable + total_gst
+    net_taxable_paise: int
+    cgst_paise: int
+    sgst_paise: int
+    igst_paise: int
+    total_gst_paise: int
+    total_with_gst_paise: int
     transaction_count: int
 
 
 class GSTReport(BaseModel):
-    """Full GST report spanning multiple months."""
-    financial_year: str               # "FY 2025-26"
-    gst_rate_percent: float           # 18.0
+    financial_year: str
+    gst_rate_percent: float
     line_items: list[GSTLineItem]
     total_gross_paise: int
     total_refunds_paise: int
     total_net_taxable_paise: int
     total_gst_paise: int
-
