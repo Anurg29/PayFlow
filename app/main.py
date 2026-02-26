@@ -45,11 +45,14 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 # ─── CORS ─────────────────────────────────────────────────────────────────────
 
 _frontend_url = os.getenv("FRONTEND_URL", "")
-_allowed_origins = (
-    [_frontend_url, "http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:3000"]
-    if _frontend_url
-    else ["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:3000", "*"]
-)
+_allowed_origins = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000"
+]
+if _frontend_url:
+    _allowed_origins.append(_frontend_url)
 
 app.add_middleware(
     CORSMiddleware,

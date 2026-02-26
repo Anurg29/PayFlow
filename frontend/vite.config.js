@@ -6,10 +6,13 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      '/auth': 'http://localhost:8000',
-      '/transactions': 'http://localhost:8000',
-      '/admin': 'http://localhost:8000',
-      '/health': 'http://localhost:8000',
+      '/auth': 'http://127.0.0.1:8000',
+      '/transactions': 'http://127.0.0.1:8000',
+      '/admin': 'http://127.0.0.1:8000',
+      '/health': 'http://127.0.0.1:8000',
+      '/merchants': 'http://127.0.0.1:8000',
+      '/v1': 'http://127.0.0.1:8000',
+      '/pay': 'http://127.0.0.1:8000',
     }
   }
 })
