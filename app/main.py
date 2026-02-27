@@ -105,7 +105,6 @@ def serve_home():
     """)
 
 @app.get("/health", tags=["health"])
-@limiter.limit("10/minute")
 def health_check(request: Request):
     db_status = "ok"
     try:

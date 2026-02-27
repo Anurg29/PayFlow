@@ -10,10 +10,11 @@ services:
     healthCheckPath: /health
 
     envVars:
-      - key: DATABASE_URL
-        fromDatabase:
-          name: payflow-db
-          property: connectionString
+      - key: MONGODB_URL
+        sync: false      # Add this manually in your Render Dashboard!
+        
+      - key: MONGODB_DB
+        value: "payflow"
 
       - key: SECRET_KEY
         generateValue: true      # Render auto-generates a secure random value
@@ -26,10 +27,3 @@ services:
 
       - key: FRONTEND_URL
         value: https://payflow29.netlify.app
-
-# ─── PostgreSQL Database ──────────────────────────────────────────────────────
-databases:
-  - name: payflow-db
-    databaseName: payflow
-    plan: free
-    region: singapore
