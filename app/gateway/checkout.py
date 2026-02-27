@@ -125,6 +125,120 @@ def submit_payment(
     return serialize_doc(payment)
 
 
+# ─── Direct QR Payments (No Order Setup Required) ───────────────────────────────
+
+@router.get(
+    "/qr/{qr_token}/merchant",
+    response_model=schemas.QRMerchantOut,
+    summary="Get merchant info from QR token",
+)
+def get_qr_merchant(qr_token: str, db=Depends(get_db)):
+    merchant = db[models.MERCHANTS].find_one({"qr_token": qr_token})
+    if not merchant or not merchant.get("is_active"):
+        raise HTTPException(status_code=404, detail="Invalid or inactive QR code")
+    return serialize_doc(merchant)
+
+@router.post(
+    "/qr/{qr_token}",
+    response_model=schemas.PaymentOut,
+    summary="Submit direct QR payment",
+)
+def submit_qr_payment(
+    qr_token: str,
+    payload: schemas.QRPaymentRequest,
+    db=Depends(get_db),
+):
+    merchant = db[models.MERCHANTS].find_one({"qr_token": qr_token})
+    if not merchant or not merchant.get("is_active"):
+        raise HTTPException(status_code=404, detail="Invalid or inactive QR code")
+        
+    if payload.amount <= 0:
+        raise HTTPException(status_code=400, detail="Amount must be greater than 0")
+
+    valid_methods = {"upi", "card", "netbanking", "wallet"}
+    if payload.method.lower() not in valid_methods:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid method. Choose from: {valid_methods}"
+        )
+
+    # Fraud detection using mock order structure
+    mock_order = {"amount": payload.amount, "merchant_id": str(merchant["_id"])}
+    is_flagged, flag_reason = check_payment_fraud(
+        db=db,
+        order=mock_order,
+        amount=payload.amount,
+        method=payload.method.lower(),
+        vpa=payload.vpa,
+    )
+
+    card_masked = None
+    card_network = None
+    if payload.card_number:
+        digits = payload.card_number.replace(" ", "").replace("-", "")
+        card_masked = f"{'*' * (len(digits) - 4)}{digits[-4:]}"
+        network_map = {"4": "Visa", "5": "Mastercard", "6": "RuPay", "3": "Amex"}
+        card_network = network_map.get(digits[0], "Unknown")
+
+    success = random.random() < 0.96
+    pay_status = models.PaymentStatus.CAPTURED if success else models.PaymentStatus.FAILED
+
+    payment = {
+        "payment_ref": generate_payment_ref(),
+        "order_id": f"qr_{qr_token}_{random.randint(1000, 9999)}", # Fake order ID
+        "merchant_id": str(merchant["_id"]),
+        "amount": payload.amount,
+        "currency": "INR",
+        "method": payload.method.lower(),
+        "status": pay_status,
+        "email": payload.email,
+        "contact": payload.contact,
+        "vpa": payload.vpa,
+        "card_number_masked": card_masked,
+        "card_network": card_network,
+        "is_flagged": is_flagged,
+        "flag_reason": flag_reason,
+        "captured_at": datetime.datetime.utcnow() if success else None,
+        "created_at": datetime.datetime.utcnow(),
+        "amount_refunded": 0,
+    }
+    result = db[models.PAYMENTS].insert_one(payment)
+    payment["_id"] = result.inserted_id
+
+    # Create a legacy transaction record for Dashboard visibility
+    legacy_txn = {
+        "amount": float(payload.amount) / 100,
+        "payment_method": payload.method.lower(),
+        "status": "success" if success else "failed",
+        "idempotency_key": payment["payment_ref"],
+        "is_flagged": is_flagged,
+        "user_id": payload.contact or payload.email or "guest",
+        "merchant_id": merchant["user_id"],
+        "created_at": datetime.datetime.utcnow(),
+    }
+    db[models.TRANSACTIONS].insert_one(legacy_txn)
+
+    # Webhook
+    if merchant.get("webhook_url"):
+        try:
+            from .webhooks import dispatch_webhook
+            dispatch_webhook(
+                merchant["_id"],
+                "payment.captured" if success else "payment.failed",
+                {
+                    "payment_ref": payment["payment_ref"],
+                    "order_ref": payment["order_id"],
+                    "amount": payment["amount"],
+                    "method": payment["method"],
+                    "status": payment["status"],
+                },
+            )
+        except Exception:
+            pass
+
+    return serialize_doc(payment)
+
+
 # ─── Hosted checkout HTML page ────────────────────────────────────────────────
 
 @router.get(

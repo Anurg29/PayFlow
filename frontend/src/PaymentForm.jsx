@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import api from '../api'
+import api from './api'
 import toast from 'react-hot-toast'
 import { QrCode, CreditCard, Building2, Send, IndianRupee, AlertCircle } from 'lucide-react'
 

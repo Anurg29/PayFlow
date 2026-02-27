@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import api from '../api'
+import api from './api'
 import toast from 'react-hot-toast'
 import { ShieldAlert, RefreshCw, AlertTriangle, QrCode, CreditCard, Building2, CheckCircle2 } from 'lucide-react'
 

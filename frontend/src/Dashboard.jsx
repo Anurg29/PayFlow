@@ -1,10 +1,11 @@
 import React, { useState } from 'react'
-import { useAuth } from '../context/AuthContext'
-import Sidebar from '../components/Sidebar'
-import TransactionsTab from '../components/TransactionsTab'
-import PaymentForm from '../components/PaymentForm'
-import AdminStats from '../components/AdminStats'
-import FlaggedTxns from '../components/FlaggedTxns'
+import { useAuth } from './AuthContext'
+import Sidebar from './Sidebar'
+import TransactionsTab from './TransactionsTab'
+import PaymentForm from './PaymentForm'
+import AdminStats from './AdminStats'
+import FlaggedTxns from './FlaggedTxns'
+import MerchantQR from './MerchantQR'
 import Profile from './Profile'
 
 export default function Dashboard() {
@@ -14,6 +15,7 @@ export default function Dashboard() {
     const renderContent = () => {
         switch (activeTab) {
             case 'dashboard': return <DashboardHome />
+            case 'my-qr': return <MerchantQR />
             case 'admin-stats': return <AdminStats />
             case 'admin-flagged': return <FlaggedTxns />
             case 'profile': return <Profile />

@@ -74,12 +74,32 @@ class MerchantOut(BaseModel):
     business_email: str
     website: Optional[str] = None
     webhook_url: Optional[str] = None
+    qr_token: Optional[str] = None
     is_active: bool = True
     is_verified: bool = False
     created_at: datetime
 
     class Config:
         from_attributes = True
+
+# ─── QR Code Payments ─────────────────────────────────────────────────────────
+
+class QRMerchantOut(BaseModel):
+    id: str
+    business_name: str
+    is_active: bool
+    is_verified: bool
+
+class QRPaymentRequest(BaseModel):
+    amount: int
+    method: str
+    email: Optional[str] = None
+    contact: Optional[str] = None
+    vpa: Optional[str] = None
+    card_number: Optional[str] = None
+    card_expiry: Optional[str] = None
+    card_cvv: Optional[str] = None
+    card_name: Optional[str] = None
 
 
 # ─── API Keys ─────────────────────────────────────────────────────────────────
@@ -215,6 +235,8 @@ class TransactionOut(BaseModel):
     idempotency_key: str
     is_flagged: bool
     user_id: str
+    merchant_id: Optional[str] = None
+    admin_id: Optional[str] = None
     created_at: datetime
 
     class Config:

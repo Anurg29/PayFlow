@@ -1,12 +1,13 @@
 import React from 'react'
-import { useAuth } from '../context/AuthContext'
-import { Zap, LayoutDashboard, BarChart3, ShieldAlert, UserCircle, LogOut } from 'lucide-react'
+import { useAuth } from './AuthContext'
+import { Zap, LayoutDashboard, BarChart3, ShieldAlert, UserCircle, LogOut, QrCode } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={20} />, alwaysShow: true },
-    { id: 'admin-stats', label: 'System Stats', icon: <BarChart3 size={20} />, alwaysShow: true },
-    { id: 'admin-flagged', label: 'Flagged TXNs', icon: <ShieldAlert size={20} />, alwaysShow: true },
+    { id: 'my-qr', label: 'My QR Code', icon: <QrCode size={20} />, roles: ['merchant', 'admin'] },
+    { id: 'admin-stats', label: 'System Stats', icon: <BarChart3 size={20} />, roles: ['admin'] },
+    { id: 'admin-flagged', label: 'Flagged TXNs', icon: <ShieldAlert size={20} />, roles: ['admin'] },
     { id: 'profile', label: 'Profile', icon: <UserCircle size={20} />, alwaysShow: true },
 ]
 
@@ -46,17 +47,20 @@ export default function Sidebar({ activeTab, setActiveTab }) {
 
             {/* Nav */}
             <nav className="sidebar-nav">
-                {navItems.map(item => (
-                    <button
-                        key={item.id}
-                        className={`nav-btn ${activeTab === item.id ? 'active' : ''}`}
-                        onClick={() => setActiveTab(item.id)}
-                    >
-                        {item.icon}
-                        <span>{item.label}</span>
-                        {activeTab === item.id && <div className="nav-indicator" />}
-                    </button>
-                ))}
+                {navItems.map(item => {
+                    if (!item.alwaysShow && (!item.roles || !item.roles.includes(role))) return null;
+                    return (
+                        <button
+                            key={item.id}
+                            className={`nav-btn ${activeTab === item.id ? 'active' : ''}`}
+                            onClick={() => setActiveTab(item.id)}
+                        >
+                            {item.icon}
+                            <span>{item.label}</span>
+                            {activeTab === item.id && <div className="nav-indicator" />}
+                        </button>
+                    )
+                })}
             </nav>
 
             {/* Footer — avatar + logout */}

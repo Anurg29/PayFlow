@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { useAuth } from '../context/AuthContext'
+import { useAuth } from './AuthContext'
 import toast from 'react-hot-toast'
 import { LogIn, UserPlus, Zap, Shield, TrendingUp, Lock } from 'lucide-react'
 

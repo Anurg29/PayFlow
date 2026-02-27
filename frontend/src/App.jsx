@@ -1,10 +1,17 @@
 import { Toaster } from 'react-hot-toast'
-import { AuthProvider, useAuth } from './context/AuthContext'
-import AuthPage from './pages/AuthPage'
-import Dashboard from './pages/Dashboard'
+import { AuthProvider, useAuth } from './AuthContext'
+import AuthPage from './AuthPage'
+import Dashboard from './Dashboard'
+import QRPayPage from './QRPayPage'
 
 function AppRouter() {
   const { user, loading } = useAuth()
+
+  const path = window.location.pathname
+  if (path.startsWith('/scan/')) {
+    const token = path.split('/')[2]
+    return <QRPayPage token={token} />
+  }
 
   if (loading) {
     return (

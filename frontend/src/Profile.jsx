@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
-import { useAuth } from '../context/AuthContext'
-import api from '../api'
+import { useAuth } from './AuthContext'
+import api from './api'
 import toast from 'react-hot-toast'
 import {
     User, Mail, Shield, KeyRound, Eye, EyeOff,

@@ -32,6 +32,8 @@ def _txn_to_dict(txn: dict) -> dict:
         "idempotency_key": txn["idempotency_key"],
         "is_flagged": txn["is_flagged"],
         "user_id": str(txn["user_id"]),
+        "merchant_id": str(txn.get("merchant_id")) if txn.get("merchant_id") else None,
+        "admin_id": str(txn.get("admin_id")) if txn.get("admin_id") else None,
         "created_at": txn["created_at"].isoformat() if isinstance(txn["created_at"], datetime.datetime) else str(txn["created_at"]),
     }
 
@@ -89,6 +91,8 @@ def list_transactions(db=Depends(get_db), current_user=Depends(get_current_user)
     # Admin sees all, user sees only own
     if current_user.get("role") == models.UserRole.ADMIN:
         cursor = col.find().sort("created_at", -1)
+    elif current_user.get("role") == models.UserRole.MERCHANT:
+        cursor = col.find({"$or": [{"user_id": current_user["id"]}, {"merchant_id": current_user["id"]}]}).sort("created_at", -1)
     else:
         cursor = col.find({"user_id": current_user["id"]}).sort("created_at", -1)
 

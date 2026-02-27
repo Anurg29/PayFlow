@@ -7,6 +7,11 @@ from fastapi import APIRouter, Depends, HTTPException, status
 import datetime
 from typing import List
 from bson import ObjectId
+import uuid
+import qrcode
+import io
+import os
+from fastapi.responses import Response
 
 from ..database import get_db
 from .. import models, schemas
@@ -47,12 +52,15 @@ def register_merchant(
     if existing_email:
         raise HTTPException(status_code=400, detail="Business email already registered")
 
+    qr_token = uuid.uuid4().hex
+
     doc = {
         "user_id": current_user["id"],
         "business_name": payload.business_name,
         "business_email": payload.business_email,
         "website": payload.website,
         "webhook_url": payload.webhook_url,
+        "qr_token": qr_token,
         "is_active": True,
         "is_verified": False,
         "created_at": datetime.datetime.utcnow(),
@@ -74,6 +82,12 @@ def get_my_merchant(
     merchant = db[models.MERCHANTS].find_one({"user_id": current_user["id"]})
     if not merchant:
         raise HTTPException(status_code=404, detail="Merchant profile not found. Register first.")
+        
+    if "qr_token" not in merchant:
+        qr_token = uuid.uuid4().hex
+        db[models.MERCHANTS].update_one({"_id": merchant["_id"]}, {"$set": {"qr_token": qr_token}})
+        merchant["qr_token"] = qr_token
+
     return serialize_doc(merchant)
 
 
@@ -102,6 +116,69 @@ def update_merchant(
     if update_fields:
         db[models.MERCHANTS].update_one({"_id": merchant["_id"]}, {"$set": update_fields})
         merchant.update(update_fields)
+
+    return serialize_doc(merchant)
+
+
+# ─── QR Codes ─────────────────────────────────────────────────────────────────
+
+@router.get(
+    "/me/qr-code",
+    summary="Get your Merchant QR Code",
+    response_class=Response,
+    responses={
+        200: {
+            "content": {"image/png": {}}
+        }
+    }
+)
+def get_my_qr_code(
+    current_user: dict = Depends(_require_merchant_role),
+    db = Depends(get_db),
+):
+    merchant = db[models.MERCHANTS].find_one({"user_id": current_user["id"]})
+    if not merchant:
+        raise HTTPException(status_code=404, detail="Merchant profile not found")
+        
+    qr_token = merchant.get("qr_token")
+    if not qr_token:
+        qr_token = uuid.uuid4().hex
+        db[models.MERCHANTS].update_one({"_id": merchant["_id"]}, {"$set": {"qr_token": qr_token}})
+
+    frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
+    qr_data = f"{frontend_url}/scan/{qr_token}"
+
+    qr = qrcode.QRCode(
+        version=1,
+        error_correction=qrcode.constants.ERROR_CORRECT_L,
+        box_size=10,
+        border=4,
+    )
+    qr.add_data(qr_data)
+    qr.make(fit=True)
+
+    img = qr.make_image(fill_color="black", back_color="white")
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return Response(content=buf.getvalue(), media_type="image/png")
+
+
+@router.post(
+    "/me/qr-code/regenerate",
+    response_model=schemas.MerchantOut,
+    summary="Regenerate Merchant QR Code (invalidates old ones)",
+)
+def regenerate_qr_code(
+    current_user: dict = Depends(_require_merchant_role),
+    db = Depends(get_db),
+):
+    merchant = db[models.MERCHANTS].find_one({"user_id": current_user["id"]})
+    if not merchant:
+        raise HTTPException(status_code=404, detail="Merchant profile not found")
+        
+    new_qr_token = uuid.uuid4().hex
+    db[models.MERCHANTS].update_one({"_id": merchant["_id"]}, {"$set": {"qr_token": new_qr_token}})
+    merchant["qr_token"] = new_qr_token
 
     return serialize_doc(merchant)
 
