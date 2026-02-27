@@ -16,6 +16,8 @@ load_dotenv()
 MONGODB_URL = os.getenv("MONGODB_URL")
 if not MONGODB_URL:
     MONGODB_URL = "mongodb://localhost:27017"
+else:
+    MONGODB_URL = MONGODB_URL.strip("\"'")
     
 MONGODB_DB = os.getenv("MONGODB_DB")
 if not MONGODB_DB:
